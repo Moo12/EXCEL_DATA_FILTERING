@@ -1,14 +1,13 @@
 import openpyxl 
 from pathlib import Path
 import re
-from ConfigManager.config_manager import ConfigPointsIdsManager, ConfigDataSourceManager
+from ConfigManager.config_manager import ConfigManager
 
 def set_column_names_to_index(sheet, column_names):
 
     column_index_map = {}
     
     for item in column_names:
-        print("column name:", item)
         column_index_map.setdefault(item)
 
     flag_reached_title_row = False
@@ -33,12 +32,8 @@ def get_filtered_data(wb_obj, sheet_name, columns_names, ids, match_id_column_ti
 
     column_index_map = set_column_names_to_index(point_sheet, columns_names)
 
-    for k, v in column_index_map.items():
-        print(k, v) 
-
     id_column = column_index_map[match_id_column_title]
 
-    #column_index_map.pop(match_id_column_title, None)
     relevant_excel_data = {}
 
     for row in point_sheet.iter_rows(min_row=2, min_col=0, max_row=point_sheet.max_row, max_col=point_sheet.max_column): 
@@ -47,9 +42,6 @@ def get_filtered_data(wb_obj, sheet_name, columns_names, ids, match_id_column_ti
                 if not column_name in relevant_excel_data.keys():
                     relevant_excel_data[column_name]= []
                 relevant_excel_data[column_name].append(row[column_index].value)
-                #print(row[id_column].value, column_name,  row[column_index].value)
-        else:
-            pass
 
     return relevant_excel_data
 
@@ -72,37 +64,56 @@ def get_data_by_columns_name(path, sheet_name, columns_title, regexPattern):
                 
                 if pattern.match(cell_value):
                     data[column_name].append(cell_value)
-                else:
-                    print("does not match pattern" ,cell_value)
-    
+
     wb_obj.close()
 
     return data
 
 def main():
 
-    ids_config = ConfigPointsIdsManager()
+    config_manager = ConfigManager("project_config.toml")
 
-    if ids_config.error != 0:
-        print("error in config file. stoping process")
+    if config_manager.error != 0:
+        print("***********************************************************/n \
+              error in id config file. stoping process \
+              ************************************************************")
         exit()
+    
+    # config  general
+    config_general = config_manager.general_config
+
+    root_data = config_general.root_dir
+
+    # config points id 
+
+    ids_config = config_manager.point_id_config
 
     title = []
     title.append(ids_config.id_column_title)
 
-    point_ids = get_data_by_columns_name(ids_config.id_path, ids_config.sheet_name, title, ids_config.id_pattern)
+    id_file_path = root_data / ids_config.id_path
+
+    #process points id sheet
+
+    point_ids = get_data_by_columns_name(id_file_path , ids_config.sheet_name, title, ids_config.id_pattern)
 
     ids = { item : None for item in point_ids[ids_config.id_column_title] }
-
-    source_data_config = ConfigDataSourceManager()
-
-    if source_data_config.error != 0:
-        print("error in id config file. stoping process")
-        exit()
     
-    target_path = source_data_config.target_path
+    # config  source data
 
-    wb_obj = openpyxl.load_workbook(source_data_config.path) 
+    source_data_config = config_manager.source_data_config
+
+    source_data_path = root_data / source_data_config.data_path
+
+    # config  target data
+
+    target_data_config = config_manager.target_data_config
+    
+    target_folder = root_data / target_data_config.folder_path
+
+    #process data sheet
+
+    wb_obj = openpyxl.load_workbook(source_data_path) 
 
     target_wb = openpyxl.Workbook()
 
@@ -122,10 +133,21 @@ def main():
             for val in values: 
                 sheet.cell(row=row, column=column, value=val)
                 row +=1
-            column +=1
+            column +=1 
 
     wb_obj.close()
+
     target_wb.remove(target_wb.active) #remove auto created sheet
-    target_wb.save(target_path)
+
+    target_folder.mkdir(parents=True, exist_ok=True)
+
+    target_file = Path(target_data_config.file_prefix + "_" + ids_config.id_column_title +  source_data_path.suffix)
+    target_wb.save(target_folder / target_file)
+
+    print(  "***********************************************************\n \
+Processed Succesfully Put your hands up in the air\n \
+************************************************************")
+
+
 
 main()

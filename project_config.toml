@@ -1,14 +1,20 @@
-[DataSheets]
-    source_data_path = "metro-gint-240515.xlsx"
-    destination_data_path_prefix = "summery"
+[General]
+    root_dir = "/home/mo/noa_excel"
+
+[SourceDataSheets]
+    data_path = "metro-gint-240515.xlsx"
     sheet_names = ["POINT", "LITHOLOGY"]
     id_column_title = "PointID"
 
     POINT = ["PointID", "Elevation", "Hole Size", "North", "East"]
     LITHOLOGY = ["PointID", "Depth", "Bottom"]
 
+[DestinationDataSheets]
+    folder_path = "destination"
+    file_prefix = "summery"
+    
 [IdsSheet]
     path = "ids.xlsx"
-    sheet_name = "POINT"
+    sheet_name = "POINT" 
     id_column_title = "S6"
     id_pattern = "([a-zA-Z]+[0-9]+-)+[a-zA-Z]?"
