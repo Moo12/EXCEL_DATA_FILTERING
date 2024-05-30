@@ -1,5 +1,6 @@
 [General]
     root_dir = "/home/mo/noa_excel"
+    success_strig = "Time For Coffee"
 
 [SourceDataSheets]
     data_path = "metro-gint-240515.xlsx"
@@ -11,7 +12,7 @@
 
 [DestinationDataSheets]
     folder_path = "destination"
-    file_prefix = "summery"
+    file_prefix = ""
     
 [IdsSheet]
     path = "ids.xlsx"

@@ -13,6 +13,7 @@ class ConfigGeneral(ConfigSegment):
         try:
                 
             self.root_dir = Path(raw_data[self.general_main_entry]['root_dir'])
+            self.success_strig = raw_data[self.general_main_entry]['success_strig']
         except Exception as e:
             print(e)
             self.error = 1
