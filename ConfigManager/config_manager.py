@@ -67,10 +67,21 @@ class ConfigDataDestinationManager(ConfigSegment):
         try:
             self.folder_path = Path(raw_data[self.data_main_entry]['folder_path'])
             self.file_prefix = raw_data[self.data_main_entry]['file_prefix']
+            self.sheets = raw_data[self.data_main_entry]['Sheets']
+
+            if not isinstance(self.sheets, dict):
+                self.sheets = {}
+                print("destination sheets is empty")
 
         except Exception as e:
-            print("error ", e)
-            self.error = 1
+            print("error ", e.__str__())
+
+            if  e.__str__() != "\'Sheets\'":
+                self.error = 1
+                print("error in Sheets key")
+            else:  #bypass for default value
+                print("destination sheets is empty")
+                self.sheets = {}
 
 class ConfigManager(): 
     

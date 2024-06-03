@@ -7,13 +7,18 @@
     sheet_names = ["POINT", "LITHOLOGY"]
     id_column_title = "PointID"
 
-    POINT = ["PointID", "Elevation", "Hole Size", "North", "East"]
-    LITHOLOGY = ["PointID", "Depth", "Bottom"]
+    POINT = ["PointID", "Elevation", "HoleDepth", "North", "East"]
+    LITHOLOGY = ["PointID", "Depth"]
 
 [DestinationDataSheets]
     folder_path = "destination"
     file_prefix = ""
+
+    #Sheets.POINT.North = "=IF(Elevation>10, 10, Elevation)"
+    Sheets.POINT.Elevation = "=IF(HoleDepth>62, 62, HoleDepth)"
     
+    Sheets.LITHOLOGY.Bottom = "=IF(Depth>1, 1, Depth)"
+
 [IdsSheet]
     path = "ids.xlsx"
     sheet_name = "POINT" 
