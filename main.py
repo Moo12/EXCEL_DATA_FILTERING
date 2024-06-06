@@ -1,93 +1,21 @@
 import  openpyxl
 from  openpyxl.utils import get_column_letter 
 from pathlib import Path
-import re
 from ConfigManager.config_manager import ConfigManager
+from work_book import Formula, Workbook
 
-def set_column_names_to_index(sheet, column_names):
-
-    column_index_map = dict.fromkeys(column_names, 0)
-
-    flag_reached_title_row = False #flag to skip all blanket
-
-    for row in sheet.iter_rows(min_row=1, min_col=0, max_row=sheet.max_row, max_col=sheet.max_column):
-        if not flag_reached_title_row:
-            for column in range(sheet.max_column):
-                if row[column].value is not None:
-                    cell_value = "".join(row[column].value.rstrip().lstrip())
-                    if cell_value in column_index_map.keys():
-                        flag_reached_title_row = True
-                        column_index_map[cell_value] = column
-                        print("column title: ",cell_value, "column index: ", column)
-        else:
-            break
-
-    return column_index_map
-
-def get_filtered_data(wb_obj, sheet_name, columns_names, ids, match_id_column_title):
-
-    point_sheet = wb_obj[sheet_name]
-
-    column_index_map = set_column_names_to_index(point_sheet, columns_names)
-
-    id_column = column_index_map[match_id_column_title]
-
-    relevant_excel_data = {}
-
-    for row in point_sheet.iter_rows(min_row=2, min_col=0, max_row=point_sheet.max_row, max_col=point_sheet.max_column): 
-        if row[id_column].value is not None and "".join(row[id_column].value.rstrip().lstrip()) in ids.keys():
-            for column_name, column_index in column_index_map.items():
-                if not column_name in relevant_excel_data.keys():
-                    relevant_excel_data[column_name]= []
-                relevant_excel_data[column_name].append(row[column_index].value)
-
-    return relevant_excel_data
-
-def get_data_by_columns_name(wb_obj, sheet_name, columns_title, regexPattern):
-    sheet_obj = wb_obj[sheet_name]
-    columns_index = set_column_names_to_index(sheet_obj, columns_title)
-
-    data = {}
-
-    for row in sheet_obj.iter_rows(min_row=2, min_col=0, max_row=sheet_obj.max_row, max_col=sheet_obj.max_column):
-        for column_name, column_index in columns_index.items():
-            if not column_name in data.keys():
-                data[column_name]= []
-
-            cell_value = row[column_index].value
-            #print(f"colour: {row[column_index].fill.start_color.index}")
-            if cell_value:
-                pattern = re.compile(regexPattern)
-                cell_value = "".join(row[column_index].value.rstrip().lstrip())
-                
-                if pattern.match(cell_value):
-                    data[column_name].append(cell_value)
-
-    return data
-
-def load_workbook(file_path, toPrint=False, error_string=""):
-    try:
-        wb_obj = openpyxl.load_workbook(file_path)
-        return wb_obj
-
-    except Exception as e:
-        print(e)
-        if toPrint:
-            print(f"-----------------------------------------------------------\n \
-Error in {file_path}. {error_string} \n \
------------------------------------------------------------")
-            return None
+def print_error(string_error):
+    print(f"\n ***********************************************************\n \
+{string_error}\n \
+************************************************************\n")
 
 
 def main():
-
-    config_manager = ConfigManager("project_config.toml")
+    config_file_name = "project_config.toml"
+    config_manager = ConfigManager(config_file_name)
 
     if config_manager.error != 0:
-        print("\n-----------------------------------------------------------/n \
-              error in id config file. stoping process \
-              ------------------------------------------------------------")
-        exit()
+        print_error(f"error in config file {config_file_name}. stoping process")
     
     # config  general
     config_general = config_manager.general_config
@@ -98,21 +26,27 @@ def main():
 
     ids_config = config_manager.point_id_config
 
-    title = []
-    title.append(ids_config.id_column_title)
-
     id_file_path = root_data / ids_config.id_path
 
-    wb_obj = load_workbook(id_file_path, True, "Exit Process")
-    #process points id sheet
-    if not wb_obj:
+    id_wb_instance = Workbook()
+
+    id_wb_instance.load_workbook(id_file_path)
+
+    if id_wb_instance.error != 0:
+        print_error("fatal error stopping process")
         exit()
 
-    point_ids = get_data_by_columns_name(wb_obj, ids_config.sheet_name, title, ids_config.id_pattern)
-    
-    wb_obj.close()
+    id_data_sheet =  id_wb_instance.add_id_sheet(ids_config.sheet_name, ids_config.id_pattern)
 
-    ids = { item : None for item in point_ids[ids_config.id_column_title] }
+    ids_data = id_data_sheet.get_data_by_columns_name(list([ids_config.id_column_title]))
+
+    if ids_data is None:
+        print_error(f"something went wrong processing point ids file {id_file_path}. exit process")
+        exit()
+
+    id_wb_instance.close_workbook()
+
+    ids = { item : None for item in ids_data[ids_config.id_column_title] }
     
     # config  source data
 
@@ -128,9 +62,12 @@ def main():
 
     #process data sheet
 
-    wb_obj = load_workbook(source_data_path, True, "Exit Process")
+    wb_data = Workbook()
 
-    if not wb_obj:
+    wb_data.load_workbook(source_data_path)
+
+    if wb_data.error != 0:
+        print_error("fatal error stopping process")
         exit()
 
     target_wb = openpyxl.Workbook()
@@ -140,63 +77,62 @@ def main():
         columns_names = source_data_config.sheet_to_columns[sheet_name]
         columns_names_target = dict.fromkeys(columns_names, "")
 
-        formula_excels_saved_words = { "IF": 0}
+        print(f"\nsheet name: {sheet_name}")
 
+        formula_instances = {}
+
+        #handle columns that have content of formula 
         if sheet_name in target_data_config.sheets.keys():
             for columnName, formula in target_data_config.sheets[sheet_name].items():
-                if not columnName in columns_names_target.keys():
-                    columns_names_target.setdefault(columnName)
-                
-                formula_columns = re.findall(r'[A-Za-z]+[-_0-9]?[a-zA-Z]', formula)
-                for column in formula_columns:
-                    if not column in formula_excels_saved_words and column not in columns_names_target:
-                        columns_names_target.setdefault(column)
-                        list(columns_names).append(column)
-                        print (f"column from formula add to list {column}")
-                    print (f"column from formula. already exists {column}")
+                formula_instance = Formula(formula)
+                formula_instances[columnName] = formula_instance
 
-        data = get_filtered_data(wb_obj, sheet_name, columns_names, ids, source_data_config.id_column_title)
+                for key in formula_instance.column_dict.keys():
+                    if not key in  columns_names_target.keys():
+                        columns_names_target.setdefault(key)
+                        columns_names.append(key)
+                print(f"columns for input {columns_names_target.keys()}")
+
+        data_sheet = wb_data.add_data_sheet(sheet_name, ids, source_data_config.id_column_title)
+
+        data = data_sheet.get_data_by_columns_name(columns_names)
+
+        if data is None:
+            print_error("something went wrong in sheet {sheet_name}")
+            continue
 
         target_wb.create_sheet(sheet_name)
         sheet = target_wb[sheet_name]
 
-        sheet_column_to_letters = {}
-        for i, title_column in enumerate(data.keys()):
-            sheet_column_to_letters[title_column] = get_column_letter(i + 1)
+        sheet_column_to_letters = { title_column : get_column_letter(i + 1) for i, title_column in enumerate(data.keys())}
 
         num_of_rows = len(data[source_data_config.id_column_title])
         print(f"num of rows {num_of_rows}")
 
         # replace fromulas column names with excel column letter
-        if sheet_name in target_data_config.sheets.keys():
-            for column_title, raw_formula in target_data_config.sheets[sheet_name].items():
-                for source_column, column_letter in sheet_column_to_letters.items():
-                    raw_formula = re.sub(source_column, column_letter, raw_formula)
-                    target_data_config.sheets[sheet_name][column_title] = raw_formula
-                # add destination columns if not exists in data
-                if column_title not in data.keys():
-                    print(f"title {column_title} formula {raw_formula}")
-                    data[column_title] = range(num_of_rows)
-                else:
-                    print(f"title { column_title} exists in data keys. formula: {raw_formula}")
+        for column_name, formula_instance in formula_instances.items():
+
+            formula_instance.get_processed_formula(sheet_column_to_letters)
+            # add destination columns if not exists in data
+            if column_name not in data.keys():
+                print(f"title {column_name} formula {formula_instance.raw_formula}")
+                data[column_name] = range(num_of_rows)
 
         # write data
         for column, (title_column, values) in enumerate(data.items(), 1):
             sheet.cell(1 , column, title_column) # first row for titles
             for row, val in enumerate(values, 2):
-                if sheet_name in target_data_config.sheets.keys() and title_column in target_data_config.sheets[sheet_name].keys():
-                    formula_raw = target_data_config.sheets[sheet_name][title_column]
-                    formula = re.sub(r'(?<=[^A-Z])[A-Z](?=[^A-Z])',  lambda g: g.group(0) + f"{row}", formula_raw)
+                if title_column in formula_instances.keys():
+                    formula_instance = formula_instances[title_column] 
 
-                    formula = f"={formula}"
-                    sheet.cell(row=row, column=column, value=formula)
+                    formula_with_row = formula_instance.get_formula_with_row_number(row)
 
-                    print(f"formula with row: {formula}")
+                    sheet.cell(row=row, column=column, value=formula_with_row)
                 else:
-                   sheet.cell(row=row, column=column, value=val)
+                    sheet.cell(row=row, column=column, value=val)
         
 
-    wb_obj.close()
+    wb_data.close_workbook()
 
     target_wb.remove(target_wb.active) #remove auto created sheet
 
@@ -209,15 +145,11 @@ def main():
     try:
         target_wb.save(target_full_path)
     except Exception as e:
-        print(e)
-        print(  f"\n***********************************************************\n \
-    Error Saving file {target_full_path}\n \
-    ************************************************************")
+        print_error(f"{e} Error Saving file {target_full_path}")
+        
         exit()
 
     # success
-    print(  f"\n***********************************************************\n \
-Processed Succesfully {config_general.success_strig}\n \
-************************************************************")
+    print_error(f"Processed Succesfully {config_general.success_strig}")
 
 main()
